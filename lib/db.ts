@@ -460,3 +460,34 @@ export async function escalateDueIncidents() {
 
   return results;
 }
+
+/* ------------------------------------------------------------------ */
+/* Telegram account linking                                            */
+/* ------------------------------------------------------------------ */
+
+/** Link a Telegram chat to a user (matched by email). Returns the user or null. */
+export async function linkTelegramByEmail(email: string, chatId: string) {
+  return withRetry(() =>
+    tx(async (q) => {
+      const { rows } = await q(
+        "SELECT id, name FROM users WHERE email = $1 LIMIT 1",
+        [email],
+      );
+      if (!rows.length) return null;
+      await q("UPDATE users SET telegram_chat_id = $2 WHERE id = $1", [
+        rows[0].id,
+        chatId,
+      ]);
+      return rows[0] as { id: string; name: string };
+    }),
+  );
+}
+
+/** Resolve a user from their Telegram chat id (for attributing acks). */
+export async function getUserByChatId(chatId: string) {
+  const { rows } = await query<{ id: string; name: string }>(
+    "SELECT id, name FROM users WHERE telegram_chat_id = $1 LIMIT 1",
+    [chatId],
+  );
+  return rows[0] ?? null;
+}

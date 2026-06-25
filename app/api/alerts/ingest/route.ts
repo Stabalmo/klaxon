@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { ingestAlert, type NormalizedAlert, type Severity } from "@/lib/db"
+import { notifyIncident } from "@/lib/telegram"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -85,6 +86,11 @@ export async function POST(req: Request) {
     const results = []
     for (const alert of alerts) {
       const r = await ingestAlert(alert)
+      // Page the on-call user — only for freshly created incidents, and
+      // after the tx has committed (never inside the OCC retry).
+      if (r.created) {
+        await notifyIncident(r.incident.id).catch(() => {})
+      }
       results.push({
         created: r.created,
         id: r.incident.id,
