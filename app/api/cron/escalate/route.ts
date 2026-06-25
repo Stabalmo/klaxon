@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { escalateDueIncidents } from "@/lib/db"
+import { notifyIncident } from "@/lib/telegram"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -22,6 +23,12 @@ async function handle(req: Request) {
 
   try {
     const results = await escalateDueIncidents()
+    // Page the newly-assigned on-call user for each incident that advanced.
+    for (const r of results) {
+      if (r.action === "escalated") {
+        await notifyIncident(r.id).catch(() => {})
+      }
+    }
     return NextResponse.json({ ok: true, processed: results.length, results })
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e)

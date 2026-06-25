@@ -103,9 +103,9 @@ export function IncidentsView() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         dedup_key: `test-${Date.now()}`,
-        title: "Test alert — synthetic monitor failed",
-        severity: "SEV3",
-        service: "synthetic-probe",
+        title: "Test alert — elevated 5xx on checkout",
+        severity: "SEV1",
+        service: "checkout-service",
       }),
     }).catch(() => {})
     refresh()
