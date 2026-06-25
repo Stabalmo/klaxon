@@ -1,25 +1,33 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Timer } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import {
-  buildTimeline,
-  formatCountdown,
-  type Incident,
-} from "@/lib/incidents"
+import { formatCountdown, type Incident, type TimelineEvent } from "@/lib/incidents"
 import { StatusBadge, SeverityBadge } from "./badges"
 import { ResponderAvatar } from "./responder-avatar"
 import { IncidentTimeline } from "./incident-timeline"
 
-const ACTING_USER = "Maya Chen"
-
-export function IncidentDetailView({ incident }: { incident: Incident }) {
+export function IncidentDetailView({
+  incident,
+  timeline,
+}: {
+  incident: Incident
+  timeline: TimelineEvent[]
+}) {
+  const router = useRouter()
   const [current, setCurrent] = useState<Incident>(incident)
+  const [pending, setPending] = useState(false)
 
-  // Live escalation countdown while the incident is still triggered.
+  // Reconcile with fresh server data after router.refresh().
+  useEffect(() => {
+    setCurrent(incident)
+  }, [incident])
+
+  // Live escalation countdown while still triggered.
   useEffect(() => {
     if (current.status !== "triggered" || !current.escalatesInSeconds) return
     const interval = setInterval(() => {
@@ -35,24 +43,29 @@ export function IncidentDetailView({ incident }: { incident: Incident }) {
     return () => clearInterval(interval)
   }, [current.status, current.escalatesInSeconds])
 
-  const acknowledge = () =>
-    setCurrent((prev) => ({
-      ...prev,
-      status: "acknowledged",
-      ackedBy: ACTING_USER,
-      escalatesInSeconds: undefined,
-    }))
+  // Poll the server so a cron escalation or an ack from Telegram shows up live.
+  useEffect(() => {
+    const poll = setInterval(() => router.refresh(), 3000)
+    return () => clearInterval(poll)
+  }, [router])
 
-  const resolve = () =>
-    setCurrent((prev) => ({
-      ...prev,
-      status: "resolved",
-      ackedBy: prev.ackedBy ?? ACTING_USER,
-      resolvedNote: "Resolved just now",
-      escalatesInSeconds: undefined,
-    }))
-
-  const timeline = useMemo(() => buildTimeline(current), [current])
+  const act = async (action: "ack" | "resolve") => {
+    if (!current.dbId || pending) return
+    setPending(true)
+    // Optimistic flip; server reconciles on refresh.
+    setCurrent((prev) =>
+      action === "ack"
+        ? { ...prev, status: "acknowledged", escalatesInSeconds: undefined }
+        : { ...prev, status: "resolved", escalatesInSeconds: undefined },
+    )
+    try {
+      await fetch(`/api/incidents/${current.dbId}/${action}`, { method: "POST" })
+    } catch {
+      /* refresh will resync */
+    }
+    router.refresh()
+    setPending(false)
+  }
 
   return (
     <div className="flex min-h-screen flex-1 flex-col">
@@ -99,12 +112,18 @@ export function IncidentDetailView({ incident }: { incident: Incident }) {
           {/* Header actions */}
           <div className="flex shrink-0 items-center gap-2">
             {current.status === "triggered" && (
-              <Button variant="outline" onClick={acknowledge}>
+              <Button
+                variant="outline"
+                disabled={pending}
+                onClick={() => act("ack")}
+              >
                 Acknowledge
               </Button>
             )}
             {current.status !== "resolved" && (
-              <Button onClick={resolve}>Resolve</Button>
+              <Button disabled={pending} onClick={() => act("resolve")}>
+                Resolve
+              </Button>
             )}
             {current.status === "resolved" && (
               <span className="text-sm text-resolved-foreground/70">
