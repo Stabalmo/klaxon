@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { escalateDueIncidents } from "@/lib/db"
 import { notifyIncident } from "@/lib/telegram"
+import { emailIncident } from "@/lib/email"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -21,12 +22,15 @@ async function handle(req: Request) {
     }
   }
 
+  const origin = new URL(req.url).origin
   try {
     const results = await escalateDueIncidents()
-    // Page the newly-assigned on-call user for each incident that advanced.
+    // Page the newly-assigned on-call user for each incident that advanced
+    // — Telegram (primary) + email (secondary).
     for (const r of results) {
       if (r.action === "escalated") {
         await notifyIncident(r.id).catch(() => {})
+        await emailIncident(r.id, origin).catch(() => {})
       }
     }
     return NextResponse.json({ ok: true, processed: results.length, results })
