@@ -86,11 +86,11 @@ export function IncidentRow({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => onAcknowledge(incident.id)}
+                onClick={() => onAcknowledge(incident.dbId ?? incident.id)}
               >
                 Acknowledge
               </Button>
-              <Button size="sm" onClick={() => onResolve(incident.id)}>
+              <Button size="sm" onClick={() => onResolve(incident.dbId ?? incident.id)}>
                 Resolve
               </Button>
             </div>
@@ -107,7 +107,7 @@ export function IncidentRow({
               size="sm"
               variant="outline"
               className="hidden sm:inline-flex"
-              onClick={() => onResolve(incident.id)}
+              onClick={() => onResolve(incident.dbId ?? incident.id)}
             >
               Resolve
             </Button>

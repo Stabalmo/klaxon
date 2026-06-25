@@ -10,6 +10,8 @@ export type Responder = {
 
 export type Incident = {
   id: string
+  /** real DSQL UUID, used for API mutations (ack/resolve). id stays the display_id. */
+  dbId?: string
   title: string
   service: string
   severity: Severity
@@ -217,4 +219,114 @@ export function buildTimeline(incident: Incident): TimelineEvent[] {
   }
 
   return events
+}
+
+/* ------------------------------------------------------------------ */
+/* Mapping real DSQL data (from the API) into the UI shapes above.     */
+/* ------------------------------------------------------------------ */
+
+export type ApiIncident = {
+  id: string
+  display_id: string
+  title: string
+  severity: Severity
+  status: IncidentStatus
+  created_at: string
+  next_escalation_at: string | null
+  acked_at: string | null
+  resolved_at: string | null
+  service_slug: string | null
+  assignee_name: string | null
+  acked_by_name: string | null
+}
+
+const avatarTones = [
+  "var(--chart-1)",
+  "var(--acknowledged)",
+  "var(--chart-3)",
+  "#6366a8",
+  "#3d8a7a",
+]
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  const out = (parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")
+  return out.toUpperCase() || "?"
+}
+
+function toneOf(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return avatarTones[h % avatarTones.length]
+}
+
+/** Relative "Nm ago" from an ISO timestamp (past). */
+export function relativeTime(iso: string | null): string {
+  if (!iso) return ""
+  const seconds = (Date.now() - new Date(iso).getTime()) / 1000
+  const safe = Math.max(0, Math.round(seconds))
+  if (safe <= 5) return "just now"
+  if (safe < 60) return `${safe}s ago`
+  if (safe < 3600) return `${Math.round(safe / 60)}m ago`
+  return `${Math.round(safe / 3600)}h ago`
+}
+
+/** Map a DSQL incident row into the UI Incident shape. */
+export function incidentFromApi(row: ApiIncident): Incident {
+  const responderName = row.assignee_name ?? "Unassigned"
+
+  let escalatesInSeconds: number | undefined
+  if (row.status === "triggered" && row.next_escalation_at) {
+    escalatesInSeconds = Math.max(
+      0,
+      Math.round((new Date(row.next_escalation_at).getTime() - Date.now()) / 1000),
+    )
+  }
+
+  return {
+    id: row.display_id,
+    dbId: row.id,
+    title: row.title,
+    service: row.service_slug ?? "unknown-service",
+    severity: row.severity,
+    status: row.status,
+    responder: {
+      name: responderName,
+      initials: initialsOf(responderName),
+      tone: toneOf(responderName),
+    },
+    createdAt: relativeTime(row.created_at),
+    escalatesInSeconds,
+    ackedBy: row.acked_by_name ?? row.assignee_name ?? undefined,
+    resolvedNote: row.resolved_at
+      ? `Resolved ${relativeTime(row.resolved_at)}`
+      : undefined,
+  }
+}
+
+export type ApiEvent = {
+  id: string
+  type: TimelineEventKind
+  actor: string | null
+  detail: string | null
+  created_at: string
+}
+
+const eventTitles: Record<TimelineEventKind, string> = {
+  triggered: "Incident triggered",
+  notified: "Responder notified",
+  escalated: "Escalated",
+  acknowledged: "Acknowledged",
+  resolved: "Incident resolved",
+}
+
+/** Map real incident_events rows into the timeline shape. */
+export function timelineFromEvents(events: ApiEvent[]): TimelineEvent[] {
+  return events.map((e) => ({
+    id: e.id,
+    kind: e.type,
+    title: e.detail || eventTitles[e.type] || e.type,
+    actor: e.actor ?? "system",
+    time: relativeTime(e.created_at),
+  }))
 }

@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
-  incidents as seedIncidents,
+  incidentFromApi,
+  type ApiIncident,
   type Incident,
   type IncidentStatus,
 } from "@/lib/incidents"
@@ -27,15 +28,36 @@ const statusRank: Record<IncidentStatus, number> = {
   resolved: 2,
 }
 
-let testAlertCount = 0
-
 export function IncidentsView() {
-  const [items, setItems] = useState<Incident[]>(seedIncidents)
+  const [items, setItems] = useState<Incident[]>([])
   const [filter, setFilter] = useState<Filter>("all")
+  const [loaded, setLoaded] = useState(false)
 
-  // Live escalation countdown for triggered incidents.
+  // Pull authoritative state from DSQL.
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch("/api/incidents", { cache: "no-store" })
+      const data = await res.json()
+      if (data.ok) {
+        setItems((data.incidents as ApiIncident[]).map(incidentFromApi))
+      }
+    } catch {
+      /* transient — next poll will recover */
+    } finally {
+      setLoaded(true)
+    }
+  }, [])
+
+  // Poll every 2s so cron escalations / acks from other channels show up live.
   useEffect(() => {
-    const interval = setInterval(() => {
+    refresh()
+    const poll = setInterval(refresh, 2000)
+    return () => clearInterval(poll)
+  }, [refresh])
+
+  // Smooth 1s countdown between polls.
+  useEffect(() => {
+    const tick = setInterval(() => {
       setItems((prev) =>
         prev.map((inc) =>
           inc.status === "triggered" && inc.escalatesInSeconds
@@ -47,58 +69,51 @@ export function IncidentsView() {
         ),
       )
     }, 1000)
-    return () => clearInterval(interval)
+    return () => clearInterval(tick)
   }, [])
 
-  const acknowledge = (id: string) =>
+  const acknowledge = async (dbId: string) => {
+    // optimistic flip, then reconcile with the server
     setItems((prev) =>
       prev.map((inc) =>
-        inc.id === id
-          ? {
-              ...inc,
-              status: "acknowledged",
-              ackedBy: "Maya Chen",
-              escalatesInSeconds: undefined,
-            }
+        inc.dbId === dbId
+          ? { ...inc, status: "acknowledged", escalatesInSeconds: undefined }
           : inc,
       ),
     )
+    await fetch(`/api/incidents/${dbId}/ack`, { method: "POST" }).catch(() => {})
+    refresh()
+  }
 
-  const resolve = (id: string) =>
+  const resolve = async (dbId: string) => {
     setItems((prev) =>
       prev.map((inc) =>
-        inc.id === id
-          ? {
-              ...inc,
-              status: "resolved",
-              resolvedNote: "Resolved just now",
-              escalatesInSeconds: undefined,
-            }
+        inc.dbId === dbId
+          ? { ...inc, status: "resolved", escalatesInSeconds: undefined }
           : inc,
       ),
     )
+    await fetch(`/api/incidents/${dbId}/resolve`, { method: "POST" }).catch(() => {})
+    refresh()
+  }
 
-  const sendTestAlert = () => {
-    testAlertCount += 1
-    const id = `INC-${2042 + testAlertCount}`
-    const newIncident: Incident = {
-      id,
-      title: "Test alert — synthetic monitor failed",
-      service: "synthetic-probe",
-      severity: "SEV3",
-      status: "triggered",
-      responder: { name: "Maya Chen", initials: "MC", tone: "var(--chart-1)" },
-      createdAt: "just now",
-      escalatesInSeconds: 300,
-    }
-    setItems((prev) => [newIncident, ...prev])
+  const sendTestAlert = async () => {
+    await fetch("/api/alerts/ingest", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        dedup_key: `test-${Date.now()}`,
+        title: "Test alert — synthetic monitor failed",
+        severity: "SEV3",
+        service: "synthetic-probe",
+      }),
+    }).catch(() => {})
+    refresh()
   }
 
   const counts = useMemo(() => {
     const open = items.filter((i) => i.status === "triggered").length
-    const acknowledged = items.filter(
-      (i) => i.status === "acknowledged",
-    ).length
+    const acknowledged = items.filter((i) => i.status === "acknowledged").length
     return { open, acknowledged }
   }, [items])
 
@@ -184,7 +199,7 @@ export function IncidentsView() {
           ))}
         </div>
 
-        {visible.length === 0 && (
+        {loaded && visible.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-1 py-20 text-center">
             <p className="text-sm font-medium text-foreground">
               No {filter} incidents
