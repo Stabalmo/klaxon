@@ -1,22 +1,36 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Timer } from "lucide-react"
+import { ArrowLeft, Timer, Send, Mail } from "lucide-react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { formatCountdown, type Incident, type TimelineEvent } from "@/lib/incidents"
+import {
+  formatCountdown,
+  relativeTime,
+  type Incident,
+  type TimelineEvent,
+  type ApiNotification,
+} from "@/lib/incidents"
 import { StatusBadge, SeverityBadge } from "./badges"
 import { ResponderAvatar } from "./responder-avatar"
 import { IncidentTimeline } from "./incident-timeline"
 
+function deliveryTone(status: string) {
+  if (status === "sent") return "text-acknowledged"
+  if (status === "failed") return "text-triggered"
+  return "text-muted-foreground" // skipped / queued
+}
+
 export function IncidentDetailView({
   incident,
   timeline,
+  notifications,
 }: {
   incident: Incident
   timeline: TimelineEvent[]
+  notifications: ApiNotification[]
 }) {
   const router = useRouter()
   const [current, setCurrent] = useState<Incident>(incident)
@@ -48,6 +62,23 @@ export function IncidentDetailView({
     const poll = setInterval(() => router.refresh(), 3000)
     return () => clearInterval(poll)
   }, [router])
+
+  // Drive escalation from the open page when the timer is due (no per-minute
+  // cron on Hobby). Idempotent + OCC-safe, so extra calls are harmless.
+  const escalatingRef = useRef(false)
+  useEffect(() => {
+    if (current.status !== "triggered") return
+    if ((current.escalatesInSeconds ?? 1) > 0 || escalatingRef.current) return
+    escalatingRef.current = true
+    fetch("/api/cron/escalate", { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        router.refresh()
+        setTimeout(() => {
+          escalatingRef.current = false
+        }, 3000)
+      })
+  }, [current.status, current.escalatesInSeconds, router])
 
   const act = async (action: "ack" | "resolve") => {
     if (!current.dbId || pending) return
@@ -154,6 +185,40 @@ export function IncidentDetailView({
             </div>
           </div>
         </section>
+
+        {/* Delivery — where the page was sent */}
+        {notifications.length > 0 && (
+          <section className="border-b border-border py-6">
+            <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Delivery
+            </h2>
+            <ul className="flex flex-col gap-2.5">
+              {notifications.map((n) => (
+                <li key={n.id} className="flex items-center gap-2.5 text-sm">
+                  {n.channel === "telegram" ? (
+                    <Send className="size-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <Mail className="size-4 shrink-0 text-muted-foreground" />
+                  )}
+                  <span className="font-medium capitalize text-foreground">
+                    {n.channel}
+                  </span>
+                  <span className="text-muted-foreground">
+                    → {n.target_name ?? "—"}
+                  </span>
+                  <span
+                    className={`text-xs font-medium ${deliveryTone(n.status)}`}
+                  >
+                    {n.status}
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground/70">
+                    {relativeTime(n.created_at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Timeline */}
         <section className="pt-6">

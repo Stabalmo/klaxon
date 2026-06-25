@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -78,6 +78,26 @@ export function IncidentsView() {
     }, 1000)
     return () => clearInterval(tick)
   }, [])
+
+  // Drive the escalation engine from the open page: on Hobby there's no
+  // per-minute Vercel Cron, so when a triggered incident's timer is due we
+  // ping the (idempotent, OCC-safe) escalate endpoint ourselves.
+  const escalatingRef = useRef(false)
+  useEffect(() => {
+    const due = items.some(
+      (i) => i.status === "triggered" && (i.escalatesInSeconds ?? 1) <= 0,
+    )
+    if (!due || escalatingRef.current) return
+    escalatingRef.current = true
+    fetch("/api/cron/escalate", { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        refresh()
+        setTimeout(() => {
+          escalatingRef.current = false
+        }, 3000)
+      })
+  }, [items, refresh])
 
   const acknowledge = async (dbId: string) => {
     // optimistic flip, then reconcile with the server

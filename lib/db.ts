@@ -362,7 +362,20 @@ export async function getIncidentDetail(displayId: string) {
     [inc.rows[0].id]
   );
 
-  return { incident: inc.rows[0], events: events.rows };
+  const notifications = await query(
+    `SELECT n.id, n.channel, n.status, n.created_at, u.name AS target_name
+       FROM notifications n
+       LEFT JOIN users u ON u.id = n.target_user_id
+      WHERE n.incident_id = $1
+      ORDER BY n.created_at ASC`,
+    [inc.rows[0].id]
+  );
+
+  return {
+    incident: inc.rows[0],
+    events: events.rows,
+    notifications: notifications.rows,
+  };
 }
 
 /**
