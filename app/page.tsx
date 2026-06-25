@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/klaxon/sidebar"
 import { IncidentsView } from "@/components/klaxon/incidents-view"
+import { TelegramSimulator } from "@/components/klaxon/telegram-simulator"
 
 export default function Page() {
   return (
@@ -8,6 +9,7 @@ export default function Page() {
         <Sidebar />
       </div>
       <IncidentsView />
+      <TelegramSimulator />
     </div>
   )
 }

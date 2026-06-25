@@ -13,6 +13,7 @@ import {
 } from "@/lib/incidents"
 import { StatsStrip } from "./stats-strip"
 import { IncidentRow } from "./incident-row"
+import { IngestExplainerModal } from "./ingest-explainer-modal"
 
 type Filter = "all" | IncidentStatus
 
@@ -34,6 +35,7 @@ export function IncidentsView() {
   const [filter, setFilter] = useState<Filter>("all")
   const [loaded, setLoaded] = useState(false)
   const [mtta, setMtta] = useState("—")
+  const [showIngest, setShowIngest] = useState(false)
 
   // Pull authoritative state from DSQL.
   const refresh = useCallback(async () => {
@@ -124,20 +126,6 @@ export function IncidentsView() {
     refresh()
   }
 
-  const sendTestAlert = async () => {
-    await fetch("/api/alerts/ingest", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        dedup_key: `test-${Date.now()}`,
-        title: "Test alert — elevated 5xx on checkout",
-        severity: "SEV1",
-        service: "checkout-service",
-      }),
-    }).catch(() => {})
-    refresh()
-  }
-
   const counts = useMemo(() => {
     const open = items.filter((i) => i.status === "triggered").length
     const acknowledged = items.filter((i) => i.status === "acknowledged").length
@@ -182,7 +170,7 @@ export function IncidentsView() {
             ))}
           </div>
 
-          <Button size="sm" onClick={sendTestAlert}>
+          <Button size="sm" onClick={() => setShowIngest(true)}>
             <Zap />
             Send test alert
           </Button>
@@ -237,6 +225,12 @@ export function IncidentsView() {
           </div>
         )}
       </main>
+
+      <IngestExplainerModal
+        open={showIngest}
+        onClose={() => setShowIngest(false)}
+        onSent={refresh}
+      />
     </div>
   )
 }
