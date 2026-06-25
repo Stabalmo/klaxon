@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -12,12 +13,20 @@ import {
 import { cn } from "@/lib/utils"
 import { ResponderAvatar } from "./responder-avatar"
 
-const navItems = [
-  { label: "Incidents", icon: AlarmClock, href: "/", badge: "3" },
+type NavItem = {
+  label: string
+  icon: typeof AlarmClock
+  href: string
+  soon?: boolean
+  badge?: boolean
+}
+
+const navItems: NavItem[] = [
+  { label: "Incidents", icon: AlarmClock, href: "/", badge: true },
   { label: "Schedules", icon: CalendarClock, href: "/schedules" },
-  { label: "Escalation Policies", icon: GitBranch, href: "#" },
-  { label: "Services", icon: Server, href: "#" },
-  { label: "Settings", icon: Settings, href: "#" },
+  { label: "Escalation Policies", icon: GitBranch, href: "#", soon: true },
+  { label: "Services", icon: Server, href: "#", soon: true },
+  { label: "Settings", icon: Settings, href: "/settings" },
 ]
 
 function PulseMark() {
@@ -31,6 +40,27 @@ function PulseMark() {
 
 export function Sidebar() {
   const pathname = usePathname()
+  const [openCount, setOpenCount] = useState<number | null>(null)
+
+  // Live open-incident count for the Incidents badge.
+  useEffect(() => {
+    let alive = true
+    const load = async () => {
+      try {
+        const res = await fetch("/api/stats", { cache: "no-store" })
+        const data = await res.json()
+        if (alive && data.ok) setOpenCount(data.open)
+      } catch {
+        /* ignore */
+      }
+    }
+    load()
+    const poll = setInterval(load, 4000)
+    return () => {
+      alive = false
+      clearInterval(poll)
+    }
+  }, [])
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/" || pathname.startsWith("/incidents")
@@ -49,7 +79,25 @@ export function Sidebar() {
 
       <nav className="flex flex-1 flex-col gap-0.5 p-3" aria-label="Primary">
         {navItems.map((item) => {
+          if (item.soon) {
+            return (
+              <div
+                key={item.label}
+                aria-disabled="true"
+                className="flex cursor-default items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-muted-foreground/40"
+              >
+                <item.icon className="size-4" />
+                <span>{item.label}</span>
+                <span className="ml-auto rounded-full border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground/60">
+                  soon
+                </span>
+              </div>
+            )
+          }
+
           const active = isActive(item.href)
+          const showBadge = item.badge && openCount != null && openCount > 0
+
           return (
             <Link
               key={item.label}
@@ -64,9 +112,9 @@ export function Sidebar() {
             >
               <item.icon className="size-4" />
               <span>{item.label}</span>
-              {item.badge && (
+              {showBadge && (
                 <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold tabular-nums text-primary-foreground">
-                  {item.badge}
+                  {openCount}
                 </span>
               )}
             </Link>

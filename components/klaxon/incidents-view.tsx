@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
   incidentFromApi,
+  formatDuration,
   type ApiIncident,
   type Incident,
   type IncidentStatus,
@@ -32,15 +33,21 @@ export function IncidentsView() {
   const [items, setItems] = useState<Incident[]>([])
   const [filter, setFilter] = useState<Filter>("all")
   const [loaded, setLoaded] = useState(false)
+  const [mtta, setMtta] = useState("—")
 
   // Pull authoritative state from DSQL.
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch("/api/incidents", { cache: "no-store" })
-      const data = await res.json()
+      const [incRes, statsRes] = await Promise.all([
+        fetch("/api/incidents", { cache: "no-store" }),
+        fetch("/api/stats", { cache: "no-store" }),
+      ])
+      const data = await incRes.json()
       if (data.ok) {
         setItems((data.incidents as ApiIncident[]).map(incidentFromApi))
       }
+      const stats = await statsRes.json()
+      if (stats.ok) setMtta(formatDuration(stats.mttaSeconds))
     } catch {
       /* transient — next poll will recover */
     } finally {
@@ -165,7 +172,7 @@ export function IncidentsView() {
       <StatsStrip
         open={counts.open}
         acknowledged={counts.acknowledged}
-        mtta="3m 12s"
+        mtta={mtta}
       />
 
       {/* Mobile filter */}
