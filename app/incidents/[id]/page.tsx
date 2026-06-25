@@ -7,6 +7,7 @@ import {
   timelineFromEvents,
   type ApiIncident,
   type ApiEvent,
+  type ApiNotification,
 } from "@/lib/incidents"
 
 export const runtime = "nodejs"
@@ -26,13 +27,18 @@ export default async function IncidentDetailPage({
 
   const incident = incidentFromApi(detail.incident as ApiIncident)
   const timeline = timelineFromEvents(detail.events as ApiEvent[])
+  const notifications = detail.notifications as ApiNotification[]
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <div className="hidden md:block">
         <Sidebar />
       </div>
-      <IncidentDetailView incident={incident} timeline={timeline} />
+      <IncidentDetailView
+        incident={incident}
+        timeline={timeline}
+        notifications={notifications}
+      />
     </div>
   )
 }

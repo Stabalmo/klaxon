@@ -321,6 +321,14 @@ export type ApiEvent = {
   created_at: string
 }
 
+export type ApiNotification = {
+  id: string
+  channel: string
+  status: string
+  target_name: string | null
+  created_at: string
+}
+
 const eventTitles: Record<TimelineEventKind, string> = {
   triggered: "Incident triggered",
   notified: "Responder notified",
