@@ -271,6 +271,15 @@ export function relativeTime(iso: string | null): string {
   return `${Math.round(safe / 3600)}h ago`
 }
 
+/** Format a duration in seconds as "Xs" / "Xm Ys" / "Xh Ym". */
+export function formatDuration(seconds: number | null): string {
+  if (seconds == null || !isFinite(seconds)) return "—"
+  const s = Math.max(0, Math.round(seconds))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+}
+
 /** Map a DSQL incident row into the UI Incident shape. */
 export function incidentFromApi(row: ApiIncident): Incident {
   const responderName = row.assignee_name ?? "Unassigned"

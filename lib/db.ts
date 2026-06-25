@@ -491,3 +491,45 @@ export async function getUserByChatId(chatId: string) {
   );
   return rows[0] ?? null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Dashboard stats + channel status                                    */
+/* ------------------------------------------------------------------ */
+
+/** Live counts + mean-time-to-acknowledge (seconds), computed in DSQL. */
+export async function getStats() {
+  const { rows } = await query<{
+    open: string | null;
+    acknowledged: string | null;
+    resolved: string | null;
+    mtta_seconds: string | null;
+  }>(
+    `SELECT
+       sum(CASE WHEN status = 'triggered'    THEN 1 ELSE 0 END) AS open,
+       sum(CASE WHEN status = 'acknowledged' THEN 1 ELSE 0 END) AS acknowledged,
+       sum(CASE WHEN status = 'resolved'     THEN 1 ELSE 0 END) AS resolved,
+       avg(CASE WHEN acked_at IS NOT NULL
+                THEN EXTRACT(EPOCH FROM (acked_at - created_at)) END) AS mtta_seconds
+     FROM incidents`,
+  );
+  const r = rows[0] ?? {};
+  return {
+    open: Number(r.open ?? 0),
+    acknowledged: Number(r.acknowledged ?? 0),
+    resolved: Number(r.resolved ?? 0),
+    mttaSeconds: r.mtta_seconds == null ? null : Number(r.mtta_seconds),
+  };
+}
+
+/** Per-user channel reachability for the settings page. */
+export async function getChannelStatus() {
+  const { rows } = await query<{
+    name: string;
+    email: string | null;
+    telegram: boolean;
+  }>(
+    `SELECT name, email, (telegram_chat_id IS NOT NULL) AS telegram
+       FROM users ORDER BY name`,
+  );
+  return rows;
+}
