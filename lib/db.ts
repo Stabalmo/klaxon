@@ -20,12 +20,14 @@
 import { AuroraDSQLClient, isOCCError } from "@aws/aurora-dsql-node-postgres-connector";
 import { awsCredentialsProvider } from "@vercel/functions/oidc";
 
-function newClient() {
+function newClient(host: string = process.env.PGHOST!) {
   return new AuroraDSQLClient({
-    host: process.env.PGHOST!,
+    host,
     database: process.env.PGDATABASE ?? "postgres",
     user: process.env.PGUSER ?? "admin",
     // Vercel OIDC -> AWS STS -> credentials; connector signs the DSQL token.
+    // The connector derives the region from `host`, so the same role can
+    // reach any peered regional endpoint.
     customCredentialsProvider: awsCredentialsProvider({
       roleArn: process.env.AWS_ROLE_ARN!,
     }),
@@ -43,6 +45,26 @@ export async function query<T = any>(
   params: any[] = []
 ): Promise<{ rows: T[]; rowCount: number }> {
   const client = newClient();
+  await client.connect();
+  try {
+    const res = await client.query(text, params);
+    return { rows: res.rows as T[], rowCount: res.rowCount ?? 0 };
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Same as query(), but against a SPECIFIC regional endpoint.
+ * Used by the multi-region consistency demo to write in one region and
+ * read in another against the same logical DSQL database.
+ */
+export async function queryOn<T = any>(
+  host: string,
+  text: string,
+  params: any[] = []
+): Promise<{ rows: T[]; rowCount: number }> {
+  const client = newClient(host);
   await client.connect();
   try {
     const res = await client.query(text, params);
