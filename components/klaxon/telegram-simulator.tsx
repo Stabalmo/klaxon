@@ -17,9 +17,6 @@ const SEV_EMOJI: Record<string, string> = {
   SEV3: "🟡",
 }
 
-// Demo persona — matches the seeded on-call user.
-const ME = "Maya Chen"
-
 // Telegram dark ("Night") palette.
 const C = {
   bezel: "#0a0a0c",
@@ -38,6 +35,7 @@ type Msg = {
   severity: string
   service_slug: string | null
   status: string
+  assignee: string | null
 }
 
 function StatusBar() {
@@ -91,7 +89,7 @@ export function TelegramSimulator() {
       const data = await res.json()
       if (data.ok) {
         const mine = (data.incidents as any[])
-          .filter((i) => i.assignee_name === ME && i.status !== "resolved")
+          .filter((i) => i.status !== "resolved")
           .slice(0, 6)
           .reverse()
           .map((i) => ({
@@ -101,6 +99,7 @@ export function TelegramSimulator() {
             severity: i.severity,
             service_slug: i.service_slug,
             status: i.status,
+            assignee: i.assignee_name,
           }))
         setMsgs(mine)
       }
@@ -227,6 +226,11 @@ export function TelegramSimulator() {
                   <p className="font-mono text-[11px]" style={{ color: C.textDim }}>
                     {m.service_slug}
                   </p>
+                  {m.assignee && (
+                    <p className="mt-0.5 text-[11px]" style={{ color: C.textDim }}>
+                      paged {m.assignee}
+                    </p>
+                  )}
                   {m.status !== "triggered" && (
                     <p
                       className="mt-1 flex items-center justify-end gap-1 text-[11px]"
