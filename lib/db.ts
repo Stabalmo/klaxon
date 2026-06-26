@@ -556,6 +556,92 @@ export async function getStats() {
   };
 }
 
+/**
+ * Reset incident data to a curated demo template so the dashboard is never
+ * empty. Wipes incidents/events/notifications and inserts a varied example
+ * set (triggered / acknowledged / resolved across several services).
+ */
+export async function resetDemoIncidents() {
+  const TEMPLATE = [
+    { id: "INC-2041", title: "Elevated 5xx error rate on checkout", svc: "checkout-service", sev: "SEV1", status: "triggered", who: "Maya Chen", agoMin: 2, escSec: 55 },
+    { id: "INC-2040", title: "Payment authorization latency above 2s p95", svc: "payments-api", sev: "SEV1", status: "triggered", who: "Dev Patel", agoMin: 6, escSec: 35 },
+    { id: "INC-2039", title: "Auth token refresh failures spiking", svc: "auth-gateway", sev: "SEV2", status: "triggered", who: "Maya Chen", agoMin: 11, escSec: 140 },
+    { id: "INC-2038", title: "Notification delivery backlog growing", svc: "notifications-worker", sev: "SEV2", status: "acknowledged", who: "Dev Patel", agoMin: 14, escSec: null },
+    { id: "INC-2037", title: "Search results stale for new listings", svc: "search-indexer", sev: "SEV3", status: "acknowledged", who: "Maya Chen", agoMin: 23, escSec: null },
+    { id: "INC-2035", title: "Intermittent 502s from payments gateway", svc: "payments-api", sev: "SEV2", status: "resolved", who: "Maya Chen", agoMin: 60, escSec: null },
+    { id: "INC-2031", title: "Checkout cart desync after deploy", svc: "checkout-service", sev: "SEV3", status: "resolved", who: "Dev Patel", agoMin: 180, escSec: null },
+  ] as const
+
+  return withRetry(() =>
+    tx(async (q) => {
+      await q(`DELETE FROM notifications`)
+      await q(`DELETE FROM incident_events`)
+      await q(`DELETE FROM incidents`)
+
+      const serviceId = async (slug: string) => {
+        const f = await q(`SELECT id FROM services WHERE slug = $1 LIMIT 1`, [slug])
+        if (f.rows.length) return f.rows[0].id
+        const ins = await q(`INSERT INTO services (name, slug) VALUES ($1, $1) RETURNING id`, [slug])
+        return ins.rows[0].id
+      }
+      const userId = async (name: string) => {
+        const r = await q(`SELECT id FROM users WHERE name = $1 LIMIT 1`, [name])
+        return r.rows[0]?.id ?? null
+      }
+
+      for (const t of TEMPLATE) {
+        const svc = await serviceId(t.svc)
+        const who = await userId(t.who)
+        const acked = t.status === "acknowledged" || t.status === "resolved"
+        const resolved = t.status === "resolved"
+
+        const inc = await q(
+          `INSERT INTO incidents
+             (display_id, service_id, dedup_key, title, severity, status, current_step,
+              created_at, next_escalation_at, assigned_user_id, acked_by, acked_at, resolved_at)
+           VALUES
+             ($1, $2, $3, $4, $5, $6, 0,
+              now() - ($7 * interval '1 minute'),
+              CASE WHEN $8::int IS NULL THEN NULL ELSE now() + ($8 * interval '1 second') END,
+              $9, $10,
+              CASE WHEN $11::int IS NULL THEN NULL ELSE now() - ($11 * interval '1 minute') END,
+              CASE WHEN $12::int IS NULL THEN NULL ELSE now() - ($12 * interval '1 minute') END)
+           RETURNING id`,
+          [
+            t.id, svc, `demo-${t.id}`, t.title, t.sev, t.status, t.agoMin,
+            t.escSec, who, acked ? who : null,
+            acked ? Math.max(0, t.agoMin - 1) : null,
+            resolved ? Math.max(0, t.agoMin - 2) : null,
+          ],
+        )
+        const incidentId = inc.rows[0].id
+
+        await q(
+          `INSERT INTO incident_events (incident_id, type, actor, detail, created_at)
+           VALUES ($1, 'triggered', 'system', $2, now() - ($3 * interval '1 minute'))`,
+          [incidentId, `Alert ingested for ${t.svc}`, t.agoMin],
+        )
+        if (acked) {
+          await q(
+            `INSERT INTO incident_events (incident_id, type, actor, detail, created_at)
+             VALUES ($1, 'acknowledged', $2, 'acknowledged by responder', now() - ($3 * interval '1 minute'))`,
+            [incidentId, t.who, Math.max(0, t.agoMin - 1)],
+          )
+        }
+        if (resolved) {
+          await q(
+            `INSERT INTO incident_events (incident_id, type, actor, detail, created_at)
+             VALUES ($1, 'resolved', $2, 'incident resolved', now() - ($3 * interval '1 minute'))`,
+            [incidentId, t.who, Math.max(0, t.agoMin - 2)],
+          )
+        }
+      }
+
+      return { reset: true, count: TEMPLATE.length }
+    }),
+  )
+}
+
 /** Per-user channel reachability for the settings page. */
 export async function getChannelStatus() {
   const { rows } = await query<{

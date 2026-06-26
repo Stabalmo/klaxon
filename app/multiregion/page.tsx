@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/klaxon/sidebar"
 import { MultiRegionLab } from "@/components/klaxon/multiregion-lab"
+import { RegionFailover } from "@/components/klaxon/region-failover"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -18,6 +19,7 @@ export default function MultiRegionPage() {
         </header>
         <main className="flex-1">
           <MultiRegionLab />
+          <RegionFailover />
         </main>
       </div>
     </div>
