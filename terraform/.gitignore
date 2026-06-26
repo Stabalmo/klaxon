@@ -1,0 +1,12 @@
+# Local Terraform state / cache — HCP Terraform stores state remotely.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Local var files may hold secrets — keep them out of VCS.
+*.tfvars
+*.tfvars.json
+
+# Keep .terraform.lock.hcl committed — do NOT ignore it.
