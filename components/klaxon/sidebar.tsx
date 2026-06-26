@@ -13,6 +13,8 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ResponderAvatar } from "./responder-avatar"
+import { ClusterStatus } from "./cluster-status"
+import { LogoMark } from "./logo-mark"
 
 type NavItem = {
   label: string
@@ -30,15 +32,6 @@ const navItems: NavItem[] = [
   { label: "Services", icon: Server, href: "#", soon: true },
   { label: "Settings", icon: Settings, href: "/settings" },
 ]
-
-function PulseMark() {
-  return (
-    <span className="relative flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-inset ring-primary/30">
-      <span className="absolute size-3 animate-ping rounded-full bg-primary/50" />
-      <span className="relative size-2.5 rounded-full bg-primary" />
-    </span>
-  )
-}
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -73,7 +66,7 @@ export function Sidebar() {
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
-        <PulseMark />
+        <LogoMark className="size-9 shrink-0" />
         <span className="text-base font-semibold tracking-tight text-sidebar-foreground">
           Klaxon
         </span>
@@ -123,6 +116,10 @@ export function Sidebar() {
           )
         })}
       </nav>
+
+      <div className="px-3 pb-1">
+        <ClusterStatus />
+      </div>
 
       <div className="border-t border-sidebar-border p-3">
         <div className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5">

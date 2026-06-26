@@ -1,5 +1,6 @@
 import { Send, Mail, Check, X } from "lucide-react"
 import { Sidebar } from "@/components/klaxon/sidebar"
+import { ResetDemoButton } from "@/components/klaxon/reset-demo-button"
 import { getChannelStatus } from "@/lib/db"
 
 export const runtime = "nodejs"
@@ -81,6 +82,13 @@ export default async function SettingsPage() {
               configured={emailConfigured}
             />
           </div>
+
+          <section className="mt-8">
+            <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Demo
+            </h2>
+            <ResetDemoButton />
+          </section>
 
           <section className="mt-8">
             <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">

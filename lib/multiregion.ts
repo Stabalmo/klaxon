@@ -82,3 +82,136 @@ export async function runConsistencyTest(): Promise<ConsistencyResult> {
     totalMs: writeMs + readMs,
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Region failover demo — take a region "offline", keep serving        */
+/* ------------------------------------------------------------------ */
+
+const NODES: RegionNode[] = [PRIMARY, SECONDARY]
+
+const STATE_DDL = `CREATE TABLE IF NOT EXISTS demo_region_state (
+  region   TEXT PRIMARY KEY,
+  disabled BOOLEAN NOT NULL DEFAULT false
+)`
+
+/** Run an op against whichever regional endpoint answers first (read path). */
+async function withAnyRegion<T>(fn: (n: RegionNode) => Promise<T>): Promise<T> {
+  let lastErr: unknown
+  for (const n of NODES) {
+    try {
+      return await fn(n)
+    } catch (e) {
+      lastErr = e
+    }
+  }
+  throw lastErr
+}
+
+async function ensureTables() {
+  await withAnyRegion((n) => queryOn(n.host, STATE_DDL)).catch(() => {})
+  await ensureProbeTable()
+}
+
+// Create the demo tables at most once per warm instance.
+let tablesEnsured = false
+async function ensureOnce() {
+  if (tablesEnsured) return
+  await ensureTables()
+  tablesEnsured = true
+}
+
+export type RegionHealth = {
+  region: string
+  label: string
+  disabled: boolean
+}
+
+export type ServiceStatus = {
+  regions: RegionHealth[]
+  operational: boolean
+  serving: { region: string; label: string } | null
+}
+
+export async function getServiceStatus(): Promise<ServiceStatus> {
+  // Fast path: a single read, no DDL. If the table isn't created yet,
+  // treat every region as healthy.
+  let rows: { region: string; disabled: boolean }[] = []
+  try {
+    const r = await withAnyRegion((n) =>
+      queryOn<{ region: string; disabled: boolean }>(
+        n.host,
+        `SELECT region, disabled FROM demo_region_state`,
+      ),
+    )
+    rows = r.rows
+  } catch {
+    /* table not created yet — all healthy */
+  }
+  const disabled = new Map(rows.map((r) => [r.region, r.disabled]))
+  const regions: RegionHealth[] = NODES.map((n) => ({
+    region: n.region,
+    label: n.label,
+    disabled: !!disabled.get(n.region),
+  }))
+  const serving = NODES.find((n) => !disabled.get(n.region)) ?? null
+  return {
+    regions,
+    operational: !!serving,
+    serving: serving ? { region: serving.region, label: serving.label } : null,
+  }
+}
+
+/** Toggle a simulated regional outage (update-or-insert, DSQL-safe). */
+export async function setRegionDisabled(region: string, disabled: boolean) {
+  await ensureOnce()
+  await withAnyRegion(async (n) => {
+    const upd = await queryOn(
+      n.host,
+      `UPDATE demo_region_state SET disabled = $2 WHERE region = $1`,
+      [region, disabled],
+    )
+    if (upd.rowCount === 0) {
+      await queryOn(
+        n.host,
+        `INSERT INTO demo_region_state (region, disabled) VALUES ($1, $2)`,
+        [region, disabled],
+      )
+    }
+  })
+  return getServiceStatus()
+}
+
+/**
+ * One live write+read through the currently-serving region. Used by the demo
+ * heartbeat to show the service keeps working even with a region "offline".
+ */
+export async function heartbeat() {
+  await ensureOnce()
+  const status = await getServiceStatus()
+  if (!status.serving) {
+    return { ok: false, reason: "all regions offline" as const }
+  }
+  const node = NODES.find((n) => n.region === status.serving!.region)!
+  const token = `hb-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+  const t0 = Date.now()
+  try {
+    await queryOn(
+      node.host,
+      `INSERT INTO consistency_probe (token, written_region) VALUES ($1, $2)`,
+      [token, node.region],
+    )
+    const res = await queryOn<{ token: string }>(
+      node.host,
+      `SELECT token FROM consistency_probe WHERE token = $1`,
+      [token],
+    )
+    return {
+      ok: res.rows.length > 0,
+      servedBy: { region: node.region, label: node.label },
+      ms: Date.now() - t0,
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, servedBy: { region: node.region, label: node.label }, error: message }
+  }
+}
