@@ -37,8 +37,9 @@ resource "aws_dsql_cluster" "primary" {
   }
 
   tags = {
-    Name    = "${var.project_name}-primary"
-    Project = var.project_name
+    Name            = "${var.project_name}-primary"
+    Project         = var.project_name
+    VercelInstallId = var.vercel_install_id
   }
 }
 
@@ -51,8 +52,9 @@ resource "aws_dsql_cluster" "secondary" {
   }
 
   tags = {
-    Name    = "${var.project_name}-secondary"
-    Project = var.project_name
+    Name            = "${var.project_name}-secondary"
+    Project         = var.project_name
+    VercelInstallId = var.vercel_install_id
   }
 }
 

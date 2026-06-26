@@ -7,6 +7,7 @@ import {
   AlarmClock,
   CalendarClock,
   GitBranch,
+  Globe,
   Server,
   Settings,
 } from "lucide-react"
@@ -23,6 +24,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: "Incidents", icon: AlarmClock, href: "/", badge: true },
+  { label: "Multi-region", icon: Globe, href: "/multiregion" },
   { label: "Schedules", icon: CalendarClock, href: "/schedules" },
   { label: "Escalation Policies", icon: GitBranch, href: "#", soon: true },
   { label: "Services", icon: Server, href: "#", soon: true },
