@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Check,
   ChevronLeft,
@@ -9,6 +9,7 @@ import {
   Mic,
   Smartphone,
   Minus,
+  Loader2,
 } from "lucide-react"
 
 const SEV_EMOJI: Record<string, string> = {
@@ -82,8 +83,12 @@ function StatusBar() {
 export function TelegramSimulator() {
   const [open, setOpen] = useState(true)
   const [msgs, setMsgs] = useState<Msg[]>([])
+  const [pending, setPending] = useState<string | null>(null)
+  const pendingRef = useRef<string | null>(null)
 
   const refresh = useCallback(async () => {
+    // don't let the background poll clobber a message mid-action
+    if (pendingRef.current) return
     try {
       const res = await fetch("/api/incidents", { cache: "no-store" })
       const data = await res.json()
@@ -115,18 +120,18 @@ export function TelegramSimulator() {
   }, [refresh])
 
   const act = async (id: string, action: "ack" | "resolve") => {
-    setMsgs((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? { ...m, status: action === "ack" ? "acknowledged" : "resolved" }
-          : m,
-      ),
-    )
+    if (pendingRef.current) return
+    // pending: keep the message as-is, show a spinner, pause the poll
+    pendingRef.current = id
+    setPending(id)
     try {
       await fetch(`/api/incidents/${id}/${action}`, { method: "POST" })
     } catch {
       /* refresh reconciles */
     }
+    // commit only after the request returns
+    pendingRef.current = null
+    setPending(null)
     refresh()
   }
 
@@ -241,24 +246,32 @@ export function TelegramSimulator() {
                   )}
                 </div>
 
-                {m.status === "triggered" && (
-                  <div className="mt-1 grid grid-cols-2 gap-1">
-                    <button
-                      onClick={() => act(m.id, "ack")}
-                      style={{ backgroundColor: C.inline, color: C.accent }}
-                      className="rounded-lg px-2 py-2 text-xs font-medium transition-colors hover:brightness-125"
+                {m.status === "triggered" &&
+                  (pending === m.id ? (
+                    <div
+                      className="mt-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium"
+                      style={{ backgroundColor: C.inline, color: C.textDim }}
                     >
-                      ✅ Acknowledge
-                    </button>
-                    <button
-                      onClick={() => act(m.id, "resolve")}
-                      style={{ backgroundColor: C.inline, color: C.accent }}
-                      className="rounded-lg px-2 py-2 text-xs font-medium transition-colors hover:brightness-125"
-                    >
-                      ✔️ Resolve
-                    </button>
-                  </div>
-                )}
+                      <Loader2 className="size-3.5 animate-spin" /> Sending…
+                    </div>
+                  ) : (
+                    <div className="mt-1 grid grid-cols-2 gap-1">
+                      <button
+                        onClick={() => act(m.id, "ack")}
+                        style={{ backgroundColor: C.inline, color: C.accent }}
+                        className="rounded-lg px-2 py-2 text-xs font-medium transition-colors hover:brightness-125"
+                      >
+                        ✅ Acknowledge
+                      </button>
+                      <button
+                        onClick={() => act(m.id, "resolve")}
+                        style={{ backgroundColor: C.inline, color: C.accent }}
+                        className="rounded-lg px-2 py-2 text-xs font-medium transition-colors hover:brightness-125"
+                      >
+                        ✔️ Resolve
+                      </button>
+                    </div>
+                  ))}
               </div>
             ))}
           </div>
