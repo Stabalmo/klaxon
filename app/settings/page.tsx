@@ -1,4 +1,4 @@
-import { Send, Mail, Check, X } from "lucide-react"
+import { Send, Check, X } from "lucide-react"
 import { Sidebar } from "@/components/klaxon/sidebar"
 import { ResetDemoButton } from "@/components/klaxon/reset-demo-button"
 import { getChannelStatus } from "@/lib/db"
@@ -45,7 +45,6 @@ function ChannelCard({
 export default async function SettingsPage() {
   const users = await getChannelStatus()
   const telegramConfigured = !!process.env.TELEGRAM_BOT_TOKEN
-  const emailConfigured = !!process.env.RESEND_API_KEY
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -65,21 +64,15 @@ export default async function SettingsPage() {
             Notification channels
           </h2>
           <p className="mb-4 text-xs text-muted-foreground">
-            Klaxon pages on-call responders over Telegram first, then email.
+            Klaxon pages on-call responders over Telegram with inline actions.
           </p>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <ChannelCard
               icon={Send}
               name="Telegram"
-              detail="Primary · inline acknowledge / resolve"
+              detail="Inline acknowledge / resolve"
               configured={telegramConfigured}
-            />
-            <ChannelCard
-              icon={Mail}
-              name="Email (Resend)"
-              detail="Secondary · link back to the incident"
-              configured={emailConfigured}
             />
           </div>
 
@@ -99,7 +92,6 @@ export default async function SettingsPage() {
                 <thead>
                   <tr className="border-b border-border bg-card text-left text-xs text-muted-foreground">
                     <th className="px-4 py-2.5 font-medium">Responder</th>
-                    <th className="px-4 py-2.5 font-medium">Email</th>
                     <th className="px-4 py-2.5 text-right font-medium">Telegram</th>
                   </tr>
                 </thead>
@@ -108,9 +100,6 @@ export default async function SettingsPage() {
                     <tr key={u.name}>
                       <td className="px-4 py-2.5 font-medium text-foreground">
                         {u.name}
-                      </td>
-                      <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                        {u.email ?? "—"}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {u.telegram ? (
